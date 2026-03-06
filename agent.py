@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 from config import Nexus3Config
 from llm import LlamaEngine
 from memory import NarrativeMemory
+from ptc import PredictThenCompress
 from retriever import BridgeGuidedRetriever
 
 log = logging.getLogger(__name__)
@@ -89,6 +90,9 @@ class Nexus3Agent:
             bridge_top_k=self.config.bridge_top_k,
         )
 
+        # D-397: Predict-Then-Compress typed tag layer
+        self.ptc = PredictThenCompress(max_tags=500)
+
         self._load_memory()
 
     def _load_memory(self):
@@ -112,14 +116,33 @@ class Nexus3Agent:
         5. Handle tool calls
         6. Store interaction in memory
         """
+        # D-397 PTC: extract typed tags from this turn before retrieval
+        new_tags = self.ptc.process_turn(user_input)
+        if new_tags:
+            log.debug("PTC extracted %d tags from turn", len(new_tags))
+
         self._extract_and_store_facts(user_input)
+
+        # D-397: Route query using PTC classification
+        query_type = self.ptc.classify(user_input)
+        ptc_context = ""
+        if query_type in ("EXACT", "COMMITMENT", "GOAL"):
+            ptc_context = self.ptc.retrieve_tag_context(query_type, user_input, top_k=8)
+            log.info("PTC route=%s tag_context_len=%d", query_type, len(ptc_context))
 
         context, confidence, route = self.retriever.retrieve_with_confidence(user_input)
 
-        log.info("Retrieval: confidence=%.3f route=%s context_len=%d",
-                 confidence, route, len(context))
+        # Merge PTC tag context with narrative context (D-401: typed tags at
+        # ~157 tokens can match full-context performance at 508 tokens)
+        if ptc_context:
+            combined_context = f"[Structured Facts]\n{ptc_context}\n\n[Narrative Memory]\n{context}" if context else f"[Structured Facts]\n{ptc_context}"
+        else:
+            combined_context = context
 
-        messages = self._build_messages(user_input, context, route)
+        log.info("Retrieval: confidence=%.3f route=%s context_len=%d ptc_tags=%d",
+                 confidence, route, len(combined_context), self.ptc.tag_count)
+
+        messages = self._build_messages(user_input, combined_context, route)
 
         if self.llm is None:
             return "[LLM not loaded — cannot generate response]"
@@ -335,6 +358,8 @@ class Nexus3Agent:
                     mem_type="fact",
                     source="tool_remember",
                 )
+                # D-397: also extract typed tags from explicitly taught facts
+                self.ptc.process_turn(fact)
             return f"(Stored {len(facts)} fact(s) in memory)"
 
         elif name == "correct":
@@ -391,8 +416,12 @@ class Nexus3Agent:
                 mem_type=fact.get("type", "fact"),
                 source=source,
             )
+            # D-397: extract typed tags from bulk-loaded facts
+            self.ptc.process_turn(fact["text"])
 
     def reset(self):
         """Clear all memory and history (for benchmark isolation)."""
         self.memory.clear()
         self.history.clear()
+        # D-397: reset PTC tag store between benchmark runs
+        self.ptc = PredictThenCompress(max_tags=500)
