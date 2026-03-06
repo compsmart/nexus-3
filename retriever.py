@@ -6,12 +6,15 @@ Key findings integrated:
 - L-323: Call 2 MUST receive hop1+hop2 context (not just bridge hint)
 - D-304: Dynamic per-question entity lookup resolves coverage ceiling
 - L-299: LLM multi-hop reasoning is the bottleneck after retrieval is solved
+- D-422: Medium-quality semantic descriptors beat exact entity names for hop-2 recall
+  (57.4% vs 41.6%): multi-query retrieval with both exact name and semantic descriptor
 
 The bridge-guided strategy:
 1. Given a question, retrieve initial context (Hop 1)
-2. Identify the "bridge entity" connecting two pieces of evidence
-3. Use the bridge to retrieve the second hop's context
-4. Provide FULL context (hop1 + hop2) for final answer generation
+2. Identify the "bridge entity" + semantic descriptor connecting two pieces of evidence
+3. Use BOTH exact-name and descriptor queries to retrieve hop-2 context (D-422)
+4. Merge hop-2 results with deduplication, sort by score
+5. Provide FULL context (hop1 + hop2) for final answer generation
 """
 
 import logging
@@ -83,18 +86,22 @@ class BridgeGuidedRetriever:
                 "hop2_scores": [],
             }
 
-        bridge_entity = self._identify_bridge(question, hop1_entries)
-
-        if bridge_entity:
-            hop2_query = f"{question} | Bridge: {bridge_entity} | Context: {hop1_entries[0].narrative}"
-        else:
-            hop2_query = f"{question} | Context: {hop1_entries[0].narrative}"
-
-        hop2_results = self.memory.retrieve(hop2_query, top_k=self.hop2_top_k)
+        # D-422: multi-query hop-2 retrieval with both exact entity name and
+        # semantic descriptor -- medium-quality semantic queries outperform
+        # exact entity names (57.4% vs 41.6% hop-2 recall).
+        hop2_queries, bridge_entity = self._extract_bridge_queries(question, hop1_entries)
 
         seen_texts = {e.text for e in hop1_entries}
-        hop2_entries = [e for e, _ in hop2_results if e.text not in seen_texts]
-        hop2_scores = [s for e, s in hop2_results if e.text not in seen_texts]
+        hop2_seen: dict = {}  # text -> (entry, best_score)
+        for q in hop2_queries:
+            for entry, score in self.memory.retrieve(q, top_k=self.hop2_top_k):
+                if entry.text not in seen_texts:
+                    if entry.text not in hop2_seen or score > hop2_seen[entry.text][1]:
+                        hop2_seen[entry.text] = (entry, score)
+
+        hop2_sorted = sorted(hop2_seen.values(), key=lambda x: x[1], reverse=True)
+        hop2_entries = [e for e, _ in hop2_sorted[:self.hop2_top_k]]
+        hop2_scores = [s for _, s in hop2_sorted[:self.hop2_top_k]]
 
         all_entries = hop1_entries + hop2_entries
         full_context = self.memory.build_narrative_context(all_entries)
@@ -107,6 +114,77 @@ class BridgeGuidedRetriever:
             "hop1_scores": hop1_scores,
             "hop2_scores": hop2_scores,
         }
+
+    def _extract_bridge_queries(
+        self,
+        question: str,
+        hop1_entries: List[MemoryEntry],
+    ) -> Tuple[List[str], Optional[str]]:
+        """Build multiple hop-2 retrieval queries using entity name + semantic descriptor.
+
+        D-422: Embedding-based retrieval rewards semantic variation. An exact entity
+        name may be too narrow -- a semantic descriptor (what this entity IS about)
+        retrieves documents that exact-match queries miss (57.4% vs 41.6% hop-2 recall).
+
+        Returns:
+            (queries, bridge_entity) where queries is a list of hop-2 query strings
+            and bridge_entity is the exact name (may be None).
+        """
+        base_ctx = hop1_entries[0].narrative if hop1_entries else ""
+        queries: List[str] = []
+        bridge_entity: Optional[str] = None
+
+        if self.llm is not None:
+            context = "\n".join(f"- {e.text}" for e in hop1_entries[:3])
+            messages = [
+                {"role": "system", "content": (
+                    "You are a bridge entity extractor. Given a question and initial "
+                    "context, identify the key entity or concept that connects the "
+                    "information to the answer.\n"
+                    "Respond in exactly this format (two lines):\n"
+                    "ENTITY: <exact entity name>\n"
+                    "DESCRIPTION: <brief semantic description in 5-10 words>\n"
+                    "Example:\n"
+                    "ENTITY: YG Entertainment\n"
+                    "DESCRIPTION: South Korean K-pop music talent agency"
+                )},
+                {"role": "user", "content": (
+                    f"Question: {question}\n\nInitial context:\n{context}\n\nBridge:"
+                )},
+            ]
+            try:
+                response = self.llm.generate(messages, max_new_tokens=60, greedy=True)
+                descriptor: Optional[str] = None
+                for line in response.strip().splitlines():
+                    if line.startswith("ENTITY:"):
+                        bridge_entity = line[7:].strip().strip('"').strip("'")
+                    elif line.startswith("DESCRIPTION:"):
+                        descriptor = line[12:].strip().strip('"').strip("'")
+
+                if bridge_entity and len(bridge_entity) < 100:
+                    # Query 1: exact entity name (traditional, high-quality)
+                    queries.append(
+                        f"{question} | Bridge: {bridge_entity} | Context: {base_ctx}"
+                    )
+                if descriptor and len(descriptor) < 200:
+                    # Query 2: semantic descriptor (D-422: medium-quality beats exact)
+                    queries.append(
+                        f"{question} | {descriptor} | Context: {base_ctx}"
+                    )
+            except Exception as e:
+                log.warning("Bridge extraction failed: %s", e)
+
+        if not queries:
+            # Fallback: pattern-based entity extraction
+            bridge_entity = self._identify_bridge_pattern(question, hop1_entries)
+            if bridge_entity:
+                queries.append(
+                    f"{question} | Bridge: {bridge_entity} | Context: {base_ctx}"
+                )
+            else:
+                queries.append(f"{question} | Context: {base_ctx}")
+
+        return queries, bridge_entity
 
     def _identify_bridge(
         self,
