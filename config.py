@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 @dataclass
 class Nexus3Config:
     # --- LLM ---
-    model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     use_4bit: bool = True
     device: str = "auto"
     max_new_tokens: int = 256

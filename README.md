@@ -5,7 +5,7 @@ Nexus-3 synthesizes key research findings from the AI Research Lab into a single
 - **Narrative Memory** (D-316, D-352): Stores reasoning chains as coherent stories instead of entity lists. Achieves 83-97% EM vs 0% for list-based memory at long reasoning chains.
 - **Bridge-Guided Retrieval** (D-335, D-332): 2-call architecture that identifies bridge entities for multi-hop QA. +5pp EM and +14pp recall over standard iterative retrieval.
 - **Confidence Gating** (D-222, D-227): Routes queries based on retrieval confidence to prevent hallucination.
-- **Llama 3 8B** backbone with 4-bit quantization for efficient inference.
+- **Qwen2.5-7B-Instruct** backbone with 4-bit quantization for efficient inference.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ User Query
     |-- Dedup by semantic similarity
     |-- Temporal decay + recency boost
     v
-[Llama 3 8B Engine]
+[Qwen2.5-7B Engine]
     |-- System prompt with retrieved memory
     |-- Greedy decoding for determinism
     |-- Tool call parsing and execution
@@ -37,7 +37,7 @@ Response
 ### Requirements
 
 - Python 3.10+
-- CUDA GPU with 8+ GB VRAM (for 4-bit Llama 3 8B)
+- CUDA GPU with 8+ GB VRAM (for 4-bit Qwen2.5-7B)
 - ~16 GB system RAM
 
 ### Install
@@ -47,9 +47,10 @@ cd poc/nexus-3
 pip install -r requirements.txt
 ```
 
-### HuggingFace Access
+### HuggingFace Access (Optional)
 
-Llama 3 requires authentication. Set your token:
+Qwen2.5-7B-Instruct is not gated, so login is usually not required. If you use a
+different private/gated model, authenticate first:
 
 ```bash
 huggingface-cli login
@@ -98,7 +99,7 @@ python benchmark.py --conditions oracle bridge_guided --n 100
 poc/nexus-3/
 ├── main.py           # Interactive agent entry point
 ├── agent.py          # Main agent orchestrator
-├── llm.py            # Llama 3 8B inference engine
+├── llm.py            # Qwen/Transformers inference engine
 ├── memory.py         # Narrative Memory system
 ├── retriever.py      # Bridge-Guided Retriever
 ├── config.py         # Configuration dataclass

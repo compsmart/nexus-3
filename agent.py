@@ -1,6 +1,6 @@
 """Nexus-3 Agent orchestrator.
 
-Integrates: LLM (Llama 3 8B) + Narrative Memory + Bridge-Guided Retrieval.
+Integrates: LLM (Qwen2.5-7B default) + Narrative Memory + Bridge-Guided Retrieval.
 
 The agent loop:
 1. Accept user query
