@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import sys
 
@@ -67,7 +68,14 @@ def main():
     parser.add_argument("--device", type=str, default="auto", help="Device: auto, cuda, cpu")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM loading (memory-only mode)")
     parser.add_argument("--no-4bit", action="store_true", help="Disable 4-bit quantization")
+    parser.add_argument("--message", type=str, help="Non-interactive mode: send a single message and exit")
     args = parser.parse_args()
+
+    # In non-interactive mode, redirect all normal stdout chatter (banner,
+    # logging-adjacent prints) to stderr so UI can parse the JSON response.
+    _real_stdout = sys.stdout
+    if args.message:
+        sys.stdout = sys.stderr
 
     config = Nexus3Config(device=args.device)
     if args.model:
@@ -76,6 +84,19 @@ def main():
         config.use_4bit = False
 
     agent = Nexus3Agent(config=config, load_llm=not args.no_llm)
+
+    # --- Non-interactive mode (for UI) --------------------------------
+    if args.message:
+        try:
+            response = agent.interact(args.message)
+        except Exception as e:
+            sys.stdout = _real_stdout
+            print(json.dumps({"response": "", "error": str(e)}))
+            return
+        sys.stdout = _real_stdout
+        print(json.dumps({"response": response}))
+        return
+
     interactive_loop(agent)
 
 

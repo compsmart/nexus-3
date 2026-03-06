@@ -65,6 +65,7 @@ huggingface-cli login
 python main.py                    # Full agent with LLM
 python main.py --device cpu       # Force CPU (slow)
 python main.py --no-llm           # Memory/retrieval only
+python main.py --message "hi"     # One-shot response (UI mode)
 python main.py --model path/to/model  # Custom model
 ```
 
