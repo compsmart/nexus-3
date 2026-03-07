@@ -1,4 +1,4 @@
-"""Llama 3 8B inference engine for Nexus-3.
+"""Transformer inference engine for Nexus-3.
 
 Supports both full-precision and 4-bit quantized inference.
 Uses the HuggingFace transformers pipeline with proper chat templating.
@@ -13,11 +13,11 @@ log = logging.getLogger(__name__)
 
 
 class LlamaEngine:
-    """Wrapper around Llama 3 8B for text generation."""
+    """Wrapper around a causal LM (default: Qwen2.5-7B-Instruct)."""
 
     def __init__(
         self,
-        model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
+        model_name: str = "Qwen/Qwen2.5-7B-Instruct",
         device: str = "auto",
         use_4bit: bool = True,
         max_new_tokens: int = 256,

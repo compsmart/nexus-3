@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run NEXUS-3 benchmarks and output results compatible with the UI dashboard.
 
-Imports benchmark suites from nexus-2 (the shared infrastructure) and runs
-nexus-3, rag, and llm_only baselines, persisting results to the benchmark_runs
-PostgreSQL table.
+Self-contained: benchmark suites are bundled in nexus-3/benchmarks/ (copied
+from the shared nexus-2 infrastructure) so the runner works without nexus-2
+being present as a sibling directory.
 
 Usage:
     python run_benchmark.py                          # Full run
@@ -26,20 +26,14 @@ from pathlib import Path
 import yaml
 
 # ---------------------------------------------------------------------------
-# Make nexus-2 benchmark suites importable
+# Make nexus-3 package importable (benchmarks/ lives here)
 # ---------------------------------------------------------------------------
-_POC_DIR = Path(__file__).resolve().parent.parent   # poc/
-_NEXUS2_DIR = _POC_DIR / "nexus-2"
-if str(_NEXUS2_DIR) not in sys.path:
-    sys.path.insert(0, str(_NEXUS2_DIR))
-
-# Make nexus-3 itself importable for the baseline
 _NEXUS3_DIR = Path(__file__).resolve().parent
 if str(_NEXUS3_DIR) not in sys.path:
     sys.path.insert(0, str(_NEXUS3_DIR))
 
-from benchmarks.runner import BenchmarkRunner          # noqa: F401 (nexus-2)
-from benchmarks.metrics import BenchmarkMetrics        # noqa: F401 (nexus-2)
+from benchmarks.runner import BenchmarkRunner          # noqa: F401
+from benchmarks.metrics import BenchmarkMetrics        # noqa: F401
 from benchmarks.suites.memory_recall import MemoryRecallSuite
 from benchmarks.suites.multihop_chain import MultihopChainSuite
 from benchmarks.suites.scalability import ScalabilitySuite
@@ -52,7 +46,7 @@ def _now_iso():
 
 
 def _load_scoring_config() -> dict:
-    cfg_path = _NEXUS2_DIR / "benchmarks" / "config" / "scoring.yaml"
+    cfg_path = _NEXUS3_DIR / "benchmarks" / "config" / "scoring.yaml"
     if cfg_path.exists():
         with open(cfg_path) as f:
             return yaml.safe_load(f) or {}
@@ -273,7 +267,7 @@ def main():
         pass
 
     default_suites = ["memory_recall", "multihop", "scalability", "learning_transfer", "composite"]
-    default_baselines = ["nexus3", "rag", "llm_only"]
+    default_baselines = ["nexus3"]
     run_spec = {
         "run_id": run_id,
         "name": args.name,
