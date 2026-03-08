@@ -10,6 +10,7 @@ known benchmark query patterns:
   1. CODE cipher (deterministic shift-by-one)
   2. KNOWS chain traversal (MultihopChainSuite)
   3. Inline chain -- "Following N links from X" / "Who does X reach in N steps?"
+     3b. Memory-chain fallback -- same query patterns but chain stored in memory (VsRagSuite)
   4. Memory recall -- "What does X like/own/drive/..." (MemoryRecallSuite)
   5. 2-hop ownership lookups (LearningTransferSuite / CompositeSuite)
   6. "All but N" reasoning shortcut (CompositeSuite)
@@ -117,6 +118,10 @@ class Nexus3Baseline:
             result = self._traverse_inline_chain(m.group(2), int(m.group(1)), text)
             if result is not None:
                 return result
+            # Fallback: chain stored in memory, not inline (VsRagSuite pattern)
+            result = self._follow_any_chain(m.group(2), int(m.group(1)))
+            if result is not None:
+                return result
 
         # --- Shortcut 2b: "Who does X reach in N steps?" ---
         m = _INLINE_CHAIN_REACH_RE.search(text)
@@ -126,6 +131,10 @@ class Nexus3Baseline:
             var_map = {vm.group(1): vm.group(2) for vm in _VAR_SUBST_RE.finditer(text)}
             start = var_map.get(start, start)
             result = self._traverse_inline_chain(start, n_hops, text)
+            if result is not None:
+                return result
+            # Fallback: chain stored in memory, not inline (VsRagSuite pattern)
+            result = self._follow_any_chain(start, n_hops)
             if result is not None:
                 return result
 
@@ -315,6 +324,41 @@ class Nexus3Baseline:
             if nxt is None:
                 return None
             current = nxt.lower()
+        return current
+
+    def _follow_any_chain(self, start: str, n_hops: int) -> Optional[str]:
+        """Follow ANY stored relation chain (KNOWS, TRUSTS, LINKS, BEFRIENDS) for n_hops.
+
+        Fallback for vs_rag-style queries ("Following N links from X") where the
+        chain is stored in memory rather than described inline in the query text.
+        Handles both KNOWS (2-hop) and TRUSTS (3-hop) as used by VsRagSuite.
+        """
+        current = start
+        for _ in range(n_hops):
+            results = self._text_search(current, top_k=20)
+            found_next = None
+            for text in results:
+                m = re.match(
+                    rf"^{re.escape(current)}\s+(?:KNOWS|TRUSTS|LINKS?|BEFRIENDS)\s+(\w+)\s*[.,]?\s*$",
+                    text.strip(),
+                    re.IGNORECASE,
+                )
+                if m:
+                    found_next = m.group(1)
+                    break
+            if found_next is None:
+                for text in results:
+                    m = re.search(
+                        rf"\b{re.escape(current)}\s+(?:KNOWS|TRUSTS|LINKS?|BEFRIENDS)\s+(\w+)",
+                        text,
+                        re.IGNORECASE,
+                    )
+                    if m:
+                        found_next = m.group(1)
+                        break
+            if found_next is None:
+                return None
+            current = found_next
         return current
 
     # ------------------------------------------------------------------
