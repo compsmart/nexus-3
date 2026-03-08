@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Run NEXUS-3 benchmarks and output results compatible with the UI dashboard.
 
-Imports benchmark suites from nexus-2 (the shared infrastructure) and runs
-nexus-3, rag, and llm_only baselines, persisting results to the benchmark_runs
-PostgreSQL table.
+Uses bundled benchmark infrastructure (self-contained, no nexus-2 dependency).
+Includes D-397 PTC module for structured typed-tag memory retrieval.
 
 Usage:
     python run_benchmark.py                          # Full run
@@ -26,14 +25,8 @@ from pathlib import Path
 import yaml
 
 # ---------------------------------------------------------------------------
-# Make nexus-2 benchmark suites importable
+# Self-contained: use bundled benchmark infrastructure
 # ---------------------------------------------------------------------------
-_POC_DIR = Path(__file__).resolve().parent.parent   # poc/
-_NEXUS2_DIR = _POC_DIR / "nexus-2"
-if str(_NEXUS2_DIR) not in sys.path:
-    sys.path.insert(0, str(_NEXUS2_DIR))
-
-# Make nexus-3 itself importable for the baseline
 _NEXUS3_DIR = Path(__file__).resolve().parent
 if str(_NEXUS3_DIR) not in sys.path:
     sys.path.insert(0, str(_NEXUS3_DIR))
