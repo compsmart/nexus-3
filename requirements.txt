@@ -9,3 +9,4 @@ tqdm>=4.65.0
 colorama>=0.4.6
 asyncpg>=0.27.0
 pyyaml>=6.0.0
+nexus-benchmarks @ git+https://x-access-token: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@github.com/compsmart/nexus-benchmarks.git@v1.0.0
