@@ -21,6 +21,7 @@ from benchmarks.adapter import Nexus3Adapter
 try:
     from shared_benchmarks.runner import run_benchmark
 except ImportError:
+    # Fallback: shared_benchmarks may be at a sibling path
     _SHARED = Path(__file__).resolve().parent.parent / "shared_benchmarks"
     if _SHARED.exists() and str(_SHARED.parent) not in sys.path:
         sys.path.insert(0, str(_SHARED.parent))

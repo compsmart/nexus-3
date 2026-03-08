@@ -1,8 +1,6 @@
 """Clean adapter wrapping the actual Nexus-3 agent for benchmarking.
 
 No shortcuts -- all queries go through the real agent pipeline.
-This replaces the old Nexus3Baseline which had regex pattern matching
-that bypassed the agent entirely.
 """
 
 import sys
@@ -29,24 +27,17 @@ class Nexus3Adapter:
             return
         from config import Nexus3Config
         from agent import Nexus3Agent
-        cfg = Nexus3Config()
-        cfg.device = self.device
+
+        cfg = Nexus3Config(device=self.device)
         self._agent = Nexus3Agent(config=cfg, load_llm=True)
 
     def reset(self):
         self._ensure_loaded()
-        if hasattr(self._agent, 'reset'):
-            self._agent.reset()
-        else:
-            # Clear narrative memory manually
-            self._agent.memory.entries.clear()
-            if hasattr(self._agent.memory, '_embeddings'):
-                self._agent.memory._embeddings = None
-            self._agent.history.clear()
+        self._agent.reset()
 
     def teach(self, text: str):
         self._ensure_loaded()
-        self._agent.memory.add(text, mem_type="fact")
+        self._agent.memory.store(text=text, narrative=text, mem_type="fact", source="benchmark")
 
     def query(self, text: str) -> str:
         self._ensure_loaded()
