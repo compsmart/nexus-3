@@ -6,11 +6,13 @@ Key findings integrated:
 - L-323: Call 2 MUST receive hop1+hop2 context (not just bridge hint)
 - D-304: Dynamic per-question entity lookup resolves coverage ceiling
 - L-299: LLM multi-hop reasoning is the bottleneck after retrieval is solved
+- D-432: Context enrichment HURTS hop-2 retrieval (-8pp); use bridge entity name only
+- D-433: Entity name extraction achieves 83% hop-2 recall (vs 73% for descriptive phrases)
 
 The bridge-guided strategy:
 1. Given a question, retrieve initial context (Hop 1)
-2. Identify the "bridge entity" connecting two pieces of evidence
-3. Use the bridge to retrieve the second hop's context
+2. Identify the "bridge entity" connecting two pieces of evidence (use exact name, D-433)
+3. Use ONLY the bridge entity name for hop-2 retrieval (no context enrichment, D-432)
 4. Provide FULL context (hop1 + hop2) for final answer generation
 """
 
@@ -85,10 +87,13 @@ class BridgeGuidedRetriever:
 
         bridge_entity = self._identify_bridge(question, hop1_entries)
 
+        # D-432: Context enrichment hurts hop-2 retrieval by -8pp.
+        # Use bridge entity name only — gold titles +10.5pp vs bridge+context -8pp.
+        # D-433: Exact entity names beat descriptive phrases (83% vs 73% recall).
         if bridge_entity:
-            hop2_query = f"{question} | Bridge: {bridge_entity} | Context: {hop1_entries[0].narrative}"
+            hop2_query = bridge_entity
         else:
-            hop2_query = f"{question} | Context: {hop1_entries[0].narrative}"
+            hop2_query = question
 
         hop2_results = self.memory.retrieve(hop2_query, top_k=self.hop2_top_k)
 
@@ -147,15 +152,18 @@ class BridgeGuidedRetriever:
         """Use the LLM to identify the bridge entity."""
         context = "\n".join(f"- {e.text}" for e in hop1_entries[:3])
 
+        # D-433: Exact entity names achieve 83% hop-2 recall vs 73% for descriptive phrases.
+        # Force the LLM to return a short entity name, not a description.
         messages = [
             {"role": "system", "content": (
                 "You are a bridge entity extractor. Given a question and initial context, "
-                "identify the key entity or concept that connects the known information "
-                "to the answer. Respond with ONLY the bridge entity name, nothing else."
+                "identify the key NAMED ENTITY (person, place, organization, or thing) that "
+                "connects the known information to the answer. "
+                "Respond with ONLY the entity name (1-4 words max). No descriptions, no sentences."
             )},
             {"role": "user", "content": (
                 f"Question: {question}\n\nInitial context:\n{context}\n\n"
-                "Bridge entity:"
+                "Bridge entity name:"
             )},
         ]
 
