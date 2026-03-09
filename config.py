@@ -24,7 +24,7 @@ class Nexus3Config:
     memory_top_k: int = 5
     novelty_threshold: float = 0.5
     narrative_max_length: int = 512
-    dedup_threshold: float = 0.95
+    dedup_threshold: float = 0.98
 
     # --- Bridge-Guided Retrieval ---
     bridge_top_k: int = 3

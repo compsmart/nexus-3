@@ -208,8 +208,29 @@ class BridgeGuidedRetriever:
         try:
             response = self.llm.generate(messages, max_new_tokens=30, greedy=True)
             bridge = response.strip().strip('"').strip("'")
-            if bridge and len(bridge) < 100:
-                return bridge
+            if not bridge or len(bridge) >= 100:
+                return self._identify_bridge_pattern(question, hop1_entries)
+
+            # If LLM returned verbose text (e.g. "Charlie is the next entity"),
+            # extract the entity name that appears in the context but not the question.
+            # Verbose responses corrupt the retrieval query at hop 2+, causing chain failures.
+            if " " in bridge:
+                context_text_lower = " ".join(e.text for e in hop1_entries).lower()
+                question_words = set(question.lower().split())
+                for token in bridge.replace(",", " ").replace(".", " ").split():
+                    clean = token.strip(".,;:()'\"")
+                    if (len(clean) > 1
+                            and clean.lower() in context_text_lower
+                            and clean.lower() not in question_words):
+                        bridge = clean
+                        break
+                else:
+                    # No context match: take first word as best guess
+                    first = bridge.split()[0].strip(".,;:()'\"")
+                    if first:
+                        bridge = first
+
+            return bridge if bridge else None
         except Exception as e:
             log.warning("Bridge LLM extraction failed: %s", e)
 
