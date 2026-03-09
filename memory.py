@@ -207,6 +207,9 @@ class NarrativeMemory:
         sims = (q_emb @ self._embeddings.T)[0]
 
         now = time.time()
+        # Keyword overlap: exact token matches rescue entity-name queries at high k
+        # where embedding similarity alone cannot discriminate similar entity names.
+        query_tokens = set(query.lower().split())
         scores = []
         for i, sim in enumerate(sims):
             entry = self.entries[i]
@@ -217,7 +220,11 @@ class NarrativeMemory:
 
             age_hours = (now - entry.timestamp) / 3600.0
             recency_boost = 1.0 / (1.0 + 0.01 * age_hours)
-            score = float(sim) * 0.85 + recency_boost * 0.15
+
+            entry_tokens = set((entry.text + " " + entry.narrative).lower().split())
+            overlap = len(query_tokens & entry_tokens) / max(len(query_tokens), 1)
+
+            score = float(sim) * 0.75 + overlap * 0.15 + recency_boost * 0.10
             scores.append((i, score))
 
         scores.sort(key=lambda x: x[1], reverse=True)

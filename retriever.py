@@ -85,28 +85,57 @@ class BridgeGuidedRetriever:
                 "hop2_scores": [],
             }
 
-        bridge_entity = self._identify_bridge(question, hop1_entries)
-
-        # D-432: Context enrichment hurts hop-2 retrieval by -8pp.
-        # Use bridge entity name only — gold titles +10.5pp vs bridge+context -8pp.
-        # D-433: Exact entity names beat descriptive phrases (83% vs 73% recall).
-        if bridge_entity:
-            hop2_query = bridge_entity
-        else:
-            hop2_query = question
-
-        hop2_results = self.memory.retrieve(hop2_query, top_k=self.hop2_top_k)
-
+        # D-432/D-433: Use bridge entity name only for hop retrieval (no context enrichment).
+        # Iteratively follow the chain for up to max_hops to support N-hop reasoning.
+        # Each hop extracts a new bridge entity from the previous hop's entries and
+        # retrieves the next link — critical for 3/4/5-hop chain queries.
         seen_texts = {e.text for e in hop1_entries}
-        hop2_entries = [e for e, _ in hop2_results if e.text not in seen_texts]
-        hop2_scores = [s for e, s in hop2_results if e.text not in seen_texts]
+        all_entries = list(hop1_entries)
+        all_scores = list(hop1_scores)
 
-        all_entries = hop1_entries + hop2_entries
+        first_bridge = None
+        hop2_entries: List[MemoryEntry] = []
+        hop2_scores: List[float] = []
+
+        current_entries = hop1_entries
+        current_query = question
+        max_hops = 5
+
+        for hop in range(max_hops - 1):
+            bridge_entity = self._identify_bridge(current_query, current_entries)
+
+            if hop == 0:
+                first_bridge = bridge_entity
+
+            hop_query = bridge_entity if bridge_entity else None
+            if not hop_query:
+                break
+
+            hop_results = self.memory.retrieve(hop_query, top_k=self.hop2_top_k)
+            new_entries = [e for e, _ in hop_results if e.text not in seen_texts]
+            new_scores = [s for e, s in hop_results if e.text not in seen_texts]
+
+            if not new_entries:
+                break
+
+            for e in new_entries:
+                seen_texts.add(e.text)
+            all_entries.extend(new_entries)
+            all_scores.extend(new_scores)
+
+            if hop == 0:
+                hop2_entries = new_entries
+                hop2_scores = new_scores
+
+            # Advance: use bridge entity as next query for further hops
+            current_entries = new_entries
+            current_query = hop_query
+
         full_context = self.memory.build_narrative_context(all_entries)
 
         return {
             "hop1_entries": hop1_entries,
-            "bridge_entity": bridge_entity,
+            "bridge_entity": first_bridge,
             "hop2_entries": hop2_entries,
             "full_context": full_context,
             "hop1_scores": hop1_scores,
