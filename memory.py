@@ -224,7 +224,7 @@ class NarrativeMemory:
             entry_tokens = set((entry.text + " " + entry.narrative).lower().split())
             overlap = len(query_tokens & entry_tokens) / max(len(query_tokens), 1)
 
-            score = float(sim) * 0.75 + overlap * 0.15 + recency_boost * 0.10
+            score = float(sim) * 0.55 + overlap * 0.35 + recency_boost * 0.10
             scores.append((i, score))
 
         scores.sort(key=lambda x: x[1], reverse=True)

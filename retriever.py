@@ -131,7 +131,15 @@ class BridgeGuidedRetriever:
             current_entries = new_entries
             current_query = hop_query
 
-        full_context = self.memory.build_narrative_context(all_entries)
+        # Build ordered context: chain links first (best hop1 seed + bridge-hop entries),
+        # then remaining hop1 entries. This ensures the LLM sees the chain path
+        # in order rather than buried under distractors (Context Structure > Content).
+        bridge_hop_entries = all_entries[len(hop1_entries):]
+        if hop1_entries:
+            ordered_entries = [hop1_entries[0]] + bridge_hop_entries + hop1_entries[1:]
+        else:
+            ordered_entries = bridge_hop_entries
+        full_context = self.memory.build_narrative_context(ordered_entries)
 
         return {
             "hop1_entries": hop1_entries,
@@ -149,11 +157,15 @@ class BridgeGuidedRetriever:
     ) -> Optional[str]:
         """Identify the bridge entity connecting question to deeper context.
 
-        Uses the LLM if available, otherwise falls back to pattern extraction.
+        Tries pattern-based extraction first (faster, deterministic for structured data),
+        falls back to LLM for complex/ambiguous cases (D-264, L-255).
         """
+        bridge = self._identify_bridge_pattern(question, hop1_entries)
+        if bridge:
+            return bridge
         if self.llm is not None:
             return self._identify_bridge_llm(question, hop1_entries)
-        return self._identify_bridge_pattern(question, hop1_entries)
+        return None
 
     def _identify_bridge_pattern(
         self,
