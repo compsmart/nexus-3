@@ -18,18 +18,14 @@ if str(_NEXUS3_DIR) not in sys.path:
 
 from benchmarks.adapter import Nexus3Adapter
 
-# Prefer the bundled copy of shared_benchmarks (avoids pip install dependency)
-_LOCAL_SHARED = _NEXUS3_DIR / "shared_benchmarks"
-if _LOCAL_SHARED.exists() and str(_NEXUS3_DIR) not in sys.path:
-    sys.path.insert(0, str(_NEXUS3_DIR))
-
 try:
     from shared_benchmarks.runner import run_benchmark
 except ImportError:
-    # Fallback: shared_benchmarks may be at a sibling path
-    _SHARED = _NEXUS3_DIR.parent / "shared_benchmarks"
-    if _SHARED.exists() and str(_SHARED.parent) not in sys.path:
-        sys.path.insert(0, str(_SHARED.parent))
+    # Fallback: pip install from local nexus-benchmarks repo or GitHub
+    import subprocess
+    _LOCAL = _NEXUS3_DIR.parent / "nexus-benchmarks"
+    _pkg = str(_LOCAL) if _LOCAL.exists() else "git+https://github.com/compsmart/nexus-benchmarks.git"
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", _pkg], check=True)
     from shared_benchmarks.runner import run_benchmark
 
 
