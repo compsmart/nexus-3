@@ -224,7 +224,14 @@ class NarrativeMemory:
             entry_tokens = set((entry.text + " " + entry.narrative).lower().split())
             overlap = len(query_tokens & entry_tokens) / max(len(query_tokens), 1)
 
-            score = float(sim) * 0.55 + overlap * 0.35 + recency_boost * 0.10
+            # Starts-with bonus: entry is the "subject" of the query entity.
+            # Handles shared-prefix entity names (scalability) and chain
+            # subject/object disambiguation (multihop bridge hops).
+            starts_with = any(
+                len(qt) > 3 and entry.text.lower().startswith(qt)
+                for qt in query_tokens
+            )
+            score = float(sim) * 0.75 + overlap * 0.15 + (0.10 if starts_with else 0.0) + recency_boost * 0.10
             scores.append((i, score))
 
         scores.sort(key=lambda x: x[1], reverse=True)

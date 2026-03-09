@@ -112,13 +112,6 @@ class BridgeGuidedRetriever:
                 break
 
             hop_results = self.memory.retrieve(hop_query, top_k=self.hop2_top_k)
-            # Prefer entries where bridge entity is the SUBJECT (starts the text):
-            # e.g. "Bravo KNOWS Charlie" > "Golf KNOWS Bravo" for bridge="Bravo".
-            hop_query_lower = hop_query.lower()
-            hop_results = sorted(
-                hop_results,
-                key=lambda x: (0 if x[0].text.lower().startswith(hop_query_lower) else 1, -x[1]),
-            )
             new_entries = [e for e, _ in hop_results if e.text not in seen_texts]
             new_scores = [s for e, s in hop_results if e.text not in seen_texts]
 
