@@ -138,14 +138,35 @@ class BridgeGuidedRetriever:
 
             current_entries = new_entries
 
-        # Build ordered context: chain links first (best hop1 seed + bridge-hop entries),
-        # then remaining hop1 entries. This ensures the LLM sees the chain path
-        # in order rather than buried under distractors (Context Structure > Content).
-        bridge_hop_entries = all_entries[len(hop1_entries):]
-        if hop1_entries:
-            ordered_entries = [hop1_entries[0]] + bridge_hop_entries + hop1_entries[1:]
+        # Context Structure > Content (D-280, L-270): present chain links in chain order
+        # first, then distractors. At N-hop with k=100, chain entries are otherwise buried
+        # among 4-5 distractors per hop, fragmenting the reasoning path for the LLM.
+        # We know chain subjects: [hop1[0].subject] + chain_so_far (bridge entities found).
+        # Entries whose subject matches a chain entity are sorted by chain position;
+        # all other entries follow. This gives the LLM a clean Alpha→Bravo→...→End chain.
+        if chain_so_far and hop1_entries:
+            start_subj = hop1_entries[0].text.split()[0].lower() if hop1_entries[0].text else ""
+            chain_subj_order = [start_subj] + [s.lower() for s in chain_so_far]
+
+            def _chain_pos(entry: "MemoryEntry") -> int:
+                s = entry.text.split()[0].lower() if entry.text else ""
+                try:
+                    return chain_subj_order.index(s)
+                except ValueError:
+                    return len(chain_subj_order)
+
+            chain_entries = sorted(
+                [e for e in all_entries if _chain_pos(e) < len(chain_subj_order)],
+                key=_chain_pos,
+            )
+            other_entries = [e for e in all_entries if _chain_pos(e) == len(chain_subj_order)]
+            ordered_entries = chain_entries + other_entries
         else:
-            ordered_entries = bridge_hop_entries
+            bridge_hop_entries = all_entries[len(hop1_entries):]
+            if hop1_entries:
+                ordered_entries = [hop1_entries[0]] + bridge_hop_entries + hop1_entries[1:]
+            else:
+                ordered_entries = bridge_hop_entries
         full_context = self.memory.build_narrative_context(ordered_entries)
 
         return {
