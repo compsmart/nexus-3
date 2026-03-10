@@ -98,11 +98,18 @@ class BridgeGuidedRetriever:
         hop2_scores: List[float] = []
 
         current_entries = hop1_entries
-        current_query = question
         max_hops = 5
+        chain_so_far: List[str] = []  # accumulated bridge entities for context
 
         for hop in range(max_hops - 1):
-            bridge_entity = self._identify_bridge(current_query, current_entries)
+            # Augment question with accumulated chain so LLM knows exactly where we are.
+            # e.g. at hop 2: "Starting from Alpha... [Chain so far: Alpha → Bravo]"
+            # Without this, LLM may re-extract "Bravo" (already found) instead of "Charlie".
+            if chain_so_far:
+                bridge_question = f"{question}\n[Chain so far: {' → '.join(chain_so_far)}]"
+            else:
+                bridge_question = question
+            bridge_entity = self._identify_bridge(bridge_question, current_entries)
 
             if hop == 0:
                 first_bridge = bridge_entity
@@ -110,6 +117,8 @@ class BridgeGuidedRetriever:
             hop_query = bridge_entity if bridge_entity else None
             if not hop_query:
                 break
+
+            chain_so_far.append(hop_query)
 
             hop_results = self.memory.retrieve(hop_query, top_k=self.hop2_top_k)
             new_entries = [e for e, _ in hop_results if e.text not in seen_texts]
@@ -127,11 +136,6 @@ class BridgeGuidedRetriever:
                 hop2_entries = new_entries
                 hop2_scores = new_scores
 
-            # Advance to next hop's entries.
-            # Keep current_query as original question so bridge ID always has full
-            # semantic context (e.g. "starting from Alpha... 5 hops") rather than
-            # just the previous bridge entity ("Bravo"), which cannot distinguish
-            # forward ("Bravo KNOWS Charlie") from reverse ("Golf KNOWS Bravo") links.
             current_entries = new_entries
 
         # Build ordered context: chain links first (best hop1 seed + bridge-hop entries),
