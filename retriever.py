@@ -127,9 +127,12 @@ class BridgeGuidedRetriever:
                 hop2_entries = new_entries
                 hop2_scores = new_scores
 
-            # Advance: use bridge entity as next query for further hops
+            # Advance to next hop's entries.
+            # Keep current_query as original question so bridge ID always has full
+            # semantic context (e.g. "starting from Alpha... 5 hops") rather than
+            # just the previous bridge entity ("Bravo"), which cannot distinguish
+            # forward ("Bravo KNOWS Charlie") from reverse ("Golf KNOWS Bravo") links.
             current_entries = new_entries
-            current_query = hop_query
 
         # Build ordered context: chain links first (best hop1 seed + bridge-hop entries),
         # then remaining hop1 entries. This ensures the LLM sees the chain path
