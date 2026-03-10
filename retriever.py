@@ -160,9 +160,15 @@ class BridgeGuidedRetriever:
         Tries pattern-based extraction first (faster, deterministic for structured data),
         falls back to LLM for complex/ambiguous cases (D-264, L-255).
         """
+        # Pattern extraction is highly reliable for structured "A RELATION B" facts
+        # and avoids the ~25% per-hop LLM failure rate that compounds at higher hops.
+        # Only invoke the LLM when pattern extraction yields no result.
+        pattern_result = self._identify_bridge_pattern(question, hop1_entries)
+        if pattern_result is not None:
+            return pattern_result
         if self.llm is not None:
             return self._identify_bridge_llm(question, hop1_entries)
-        return self._identify_bridge_pattern(question, hop1_entries)
+        return None
 
     def _identify_bridge_pattern(
         self,
